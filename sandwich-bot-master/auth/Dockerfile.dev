@@ -1,0 +1,21 @@
+FROM golang:1.20-alpine
+
+LABEL maintainer="github.com/sol-3made"
+
+WORKDIR /usr/src/app
+
+RUN apk --no-cache add ca-certificates bash vim libc6-compat
+RUN apk update && \
+    apk upgrade -U && \
+    apk --no-cache add build-base ca-certificates bash vim libc6-compat curl
+
+COPY . .
+
+RUN go mod download && go mod verify
+RUN go install github.com/swaggo/swag/cmd/swag@latest
+RUN swag init
+
+
+RUN apk add --update nodejs npm
+RUN npm install --global nodemon
+RUN apk add --no-cache bash
