@@ -1,0 +1,139 @@
+services:
+  bot:
+    build:
+      context: ./bot
+      dockerfile: Dockerfile.dev
+    command: nodemon --watch './**/*.go' --signal SIGTERM --exec 'go' run main.go
+    restart: always
+    depends_on:
+      bot_db:
+        condition: service_healthy
+    env_file:
+      - ./bot/.env.dev
+    expose:
+      - ${BOT_APP_PORT}
+    networks:
+      - dev_bot_net_private
+    profiles: [ "bot", "full" ]
+    volumes:
+      - /usr/src/app/docs
+      - ./bot:/usr/src/app
+    ############
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "http://127.0.0.1:${BOT_APP_PORT}/health/check"
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  bot_db:
+    image: postgres:16-alpine
+    volumes:
+      - ./database/dev:/var/lib/postgresql/data
+    env_file:
+      - ./bot/.env.dev
+    networks:
+      - dev_bot_net_private
+    profiles: [ "bd", "bot", "tg", "full" ]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "pg_isready",
+          "-U",
+          "${BOT_POSTGRES_USER}",
+          "-d",
+          "${BOT_POSTGRES_DB}"
+        ]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+
+  auth:
+    build:
+      context: ./auth
+      dockerfile: Dockerfile.dev
+    command: nodemon --watch './**/*.go' --signal SIGTERM --exec 'go' run main.go
+    restart: always
+    depends_on:
+      bot_db:
+        condition: service_healthy
+    env_file:
+      - ./auth/.env.dev
+    expose:
+      - ${AUTH_APP_PORT}
+    networks:
+      - dev_bot_net_private
+    profiles: [ "tg", "full" ]
+    volumes:
+      - /usr/src/app/docs
+      - ./auth:/usr/src/app
+    ############
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "http://127.0.0.1:${AUTH_APP_PORT}/health/check"
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    #  nginx:
+    #    image: nginx:latest
+    #    restart: unless-stopped
+    #    volumes:
+    #      - ./nginx/conf:/etc/nginx/conf.d
+    #      - ./certbot/conf:/etc/letsencrypt
+    #      - ./certbot/www:/var/www/certbot
+    #    ports:
+    #      - "80:80"
+    #      - "443:443"
+    #    command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
+    #
+    #  certbot:
+    #    image: certbot/certbot
+    #    restart: unless-stopped
+    #    volumes:
+    #      - ./certbot/conf:/etc/letsencrypt
+    #      - ./certbot/www:/var/www/certbot
+    #    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+  telegram:
+    build:
+      context: ./telegram
+      dockerfile: Dockerfile.dev
+    command: nodemon --watch './**/*.go' --signal SIGTERM --exec 'go' run main.go
+    restart: always
+    profiles: [ "tg", "full" ]
+    volumes:
+      - ./telegram:/usr/src/app
+    env_file:
+      - ./telegram/.env.dev
+    depends_on:
+      bot:
+        condition: service_healthy
+      bot_db:
+        condition: service_healthy
+      auth:
+        condition: service_healthy
+    networks:
+      - dev_bot_net
+      - dev_bot_net_private
+    # healthcheck:
+    #   test: ["CMD", "curl", "http://127.0.0.1:${}/health/check"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 10s
+
+networks:
+  dev_bot_net:
+    name: dev_bot_network
+  dev_bot_net_private:
